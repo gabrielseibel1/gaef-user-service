@@ -13,9 +13,9 @@ import (
 )
 
 func main() {
-	flag.Parse()
 	var prod bool
 	flag.BoolVar(&prod, "production", false, "indicates the service is used for production")
+	flag.Parse()
 
 	err := godotenv.Load()
 	if err != nil {
