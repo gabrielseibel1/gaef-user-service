@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"flag"
+	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/gabrielseibel1/gaef-user-service/domain"
 	"github.com/gabrielseibel1/gaef-user-service/handler"
@@ -11,6 +14,9 @@ import (
 	"github.com/gabrielseibel1/gaef-user-service/store"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/mongo/readpref"
 )
 
 // dependencies
@@ -50,23 +56,48 @@ type handlerGenerator struct {
 // implementation
 
 func main() {
+	// read command-line args
 	var prod bool
 	flag.BoolVar(&prod, "production", false, "indicates the service is used for production")
 	flag.Parse()
 
+	// read environment variables
 	err := godotenv.Load()
 	if err != nil {
 		log.Fatal("Error loading .env file")
 	}
 	var jwtSecret string
 	if prod {
+		gin.SetMode(gin.ReleaseMode)
 		jwtSecret = os.Getenv("JWT_SECRET")
 	} else {
 		jwtSecret = "debug-jwt-secret"
 	}
+	port := os.Getenv("PORT")
+	dbURI := os.Getenv("MONGODB_URI")
+	dbName := os.Getenv("MONGODB_DATABASE")
+	collectionName := os.Getenv("MONGODB_COLLECTION")
 
+	// TODO: secure connection to mongo with user/password
+	// connect to mongoDB
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI(dbURI))
+	defer func() {
+		if err = client.Disconnect(ctx); err != nil {
+			panic(err)
+		}
+	}()
+	ctx, cancel = context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	err = client.Ping(ctx, readpref.Primary())
+	if err != nil {
+		panic(err)
+	}
+
+	// instantiate and inject dependencies
+	str := store.NewMongoStore(client.Database(dbName).Collection(collectionName))
 	phv := domain.PasswordHasherVerifier{}
-	str := store.New()
 	svc := service.New(phv, phv, str, str, str, str, str)
 	hdl := handler.New(svc, svc, svc, svc, svc, []byte(jwtSecret))
 	gen := handlerGenerator{
@@ -95,5 +126,5 @@ func main() {
 			auth.DELETE("/:id", gen.deleteHandler.DeleteUser())
 		}
 	}
-	r.Run()
+	r.Run(fmt.Sprintf("localhost:%s", port))
 }

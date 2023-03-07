@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -19,18 +20,25 @@ func (mph *mockPasswordHasher) GenerateFromPassword(password string) (string, er
 }
 
 type mockCreator struct {
+	ctx  context.Context
 	user *domain.UserWithHashedPassword
 	id   string
 	err  error
 }
 
-func (mc *mockCreator) Create(user *domain.UserWithHashedPassword) (string, error) {
+func (mc *mockCreator) Create(user *domain.UserWithHashedPassword, ctx context.Context) (string, error) {
+	mc.ctx = ctx
 	mc.user = user
 	return mc.id, mc.err
 }
 
 func TestService_Create_OK(t *testing.T) {
 	// define mocks and dummies and inject dependencies
+	dummyContext := context.TODO()
+	mockByEmailReader := &mockByEmailReader{
+		user: nil,
+		err:  errors.New("user not found"),
+	}
 	mockPasswordHasher := &mockPasswordHasher{
 		hashedPassword: "hashed",
 		err:            nil,
@@ -45,12 +53,13 @@ func TestService_Create_OK(t *testing.T) {
 	}
 	dummyPassword := "test123"
 	s := Service{
+		byEmailReader:  mockByEmailReader,
 		passwordHasher: mockPasswordHasher,
 		creator:        mockCreator,
 	}
 
 	// run code under test
-	id, err := s.Create(dummyUser, dummyPassword)
+	id, err := s.Create(dummyUser, dummyPassword, dummyContext)
 
 	// assert good results and side effects
 	if err != nil {
@@ -59,8 +68,8 @@ func TestService_Create_OK(t *testing.T) {
 	if id != mockCreator.id {
 		t.Errorf("Service.Create() = %v, want %v", id, mockCreator.id)
 	}
-	if mockCreator.user.User != *dummyUser {
-		t.Errorf("Service.Create() saved user %v, want %v", mockCreator.user.User, *dummyUser)
+	if *domain.ToSimplifiedUser(mockCreator.user) != *dummyUser {
+		t.Errorf("Service.Create() saved user %v, want %v", *domain.ToSimplifiedUser(mockCreator.user), *dummyUser)
 	}
 	if mockPasswordHasher.password != dummyPassword {
 		t.Errorf("Service.Create() hashed password %v, want %v", mockPasswordHasher.password, dummyPassword)
@@ -68,10 +77,18 @@ func TestService_Create_OK(t *testing.T) {
 	if mockCreator.user.HashedPassword != mockPasswordHasher.hashedPassword {
 		t.Errorf("Service.Create() saved password %v, want %v", mockCreator.user.HashedPassword, mockPasswordHasher.hashedPassword)
 	}
+	if mockCreator.ctx != dummyContext {
+		t.Errorf("Service.Create() passed context %v, want %v", mockCreator.ctx, dummyContext)
+	}
 }
 
 func TestService_Create_ErrCreator(t *testing.T) {
 	// define mocks and dummies and inject dependencies
+	dummyContext := context.TODO()
+	mockByEmailReader := &mockByEmailReader{
+		user: nil,
+		err:  errors.New("user not found"),
+	}
 	mockPasswordHasher := &mockPasswordHasher{
 		hashedPassword: "hashed",
 		err:            nil,
@@ -86,12 +103,13 @@ func TestService_Create_ErrCreator(t *testing.T) {
 	}
 	dummyPassword := "test123"
 	s := Service{
+		byEmailReader:  mockByEmailReader,
 		passwordHasher: mockPasswordHasher,
 		creator:        mockCreator,
 	}
 
 	// run code under test
-	id, err := s.Create(dummyUser, dummyPassword)
+	id, err := s.Create(dummyUser, dummyPassword, dummyContext)
 
 	// assert good results and side effects
 	if err == nil {
@@ -100,8 +118,8 @@ func TestService_Create_ErrCreator(t *testing.T) {
 	if id != mockCreator.id {
 		t.Errorf("Service.Create() = %v, want %v", id, mockCreator.id)
 	}
-	if mockCreator.user.User != *dummyUser {
-		t.Errorf("Service.Create() saved user %v, want %v", mockCreator.user.User, *dummyUser)
+	if *domain.ToSimplifiedUser(mockCreator.user) != *dummyUser {
+		t.Errorf("Service.Create() saved user %v, want %v", *domain.ToSimplifiedUser(mockCreator.user), *dummyUser)
 	}
 	if mockPasswordHasher.password != dummyPassword {
 		t.Errorf("Service.Create() hashed password %v, want %v", mockPasswordHasher.password, dummyPassword)
@@ -109,10 +127,18 @@ func TestService_Create_ErrCreator(t *testing.T) {
 	if mockCreator.user.HashedPassword != mockPasswordHasher.hashedPassword {
 		t.Errorf("Service.Create() saved password %v, want %v", mockCreator.user.HashedPassword, mockPasswordHasher.hashedPassword)
 	}
+	if mockCreator.ctx != dummyContext {
+		t.Errorf("Service.Create() passed context %v, want %v", mockCreator.ctx, dummyContext)
+	}
 }
 
 func TestService_Create_ErrHasher(t *testing.T) {
 	// define mocks and dummies and inject dependencies
+	dummyContext := context.TODO()
+	mockByEmailReader := &mockByEmailReader{
+		user: nil,
+		err:  errors.New("user not found"),
+	}
 	mockPasswordHasher := &mockPasswordHasher{
 		hashedPassword: "hashed",
 		err:            errors.New("mock error from hasher"),
@@ -127,12 +153,13 @@ func TestService_Create_ErrHasher(t *testing.T) {
 	}
 	dummyPassword := "test123"
 	s := Service{
+		byEmailReader:  mockByEmailReader,
 		passwordHasher: mockPasswordHasher,
 		creator:        mockCreator,
 	}
 
 	// run code under test
-	id, err := s.Create(dummyUser, dummyPassword)
+	id, err := s.Create(dummyUser, dummyPassword, dummyContext)
 
 	// assert good results and side effects
 	if err == nil {
@@ -142,20 +169,72 @@ func TestService_Create_ErrHasher(t *testing.T) {
 		t.Errorf("Service.Create() = %v, want ", id)
 	}
 	if mockCreator.user != nil {
-		t.Errorf("Service.Create() saved user %v, want %v", mockCreator.user.User, *dummyUser)
+		t.Errorf("Service.Create() saved user %v, want %v", mockCreator.user, *dummyUser)
 	}
 	if mockPasswordHasher.password != dummyPassword {
 		t.Errorf("Service.Create() hashed password %v, want %v", mockPasswordHasher.password, dummyPassword)
 	}
+	if mockCreator.ctx != nil {
+		t.Errorf("Service.Create() passed context %v, want nil", mockCreator.ctx)
+	}
+}
+
+func TestService_Create_ErrReader(t *testing.T) {
+	// define mocks and dummies and inject dependencies
+	dummyContext := context.TODO()
+	mockByEmailReader := &mockByEmailReader{
+		user: nil,
+		err:  nil,
+	}
+	mockPasswordHasher := &mockPasswordHasher{
+		hashedPassword: "hashed",
+		err:            errors.New("mock error from hasher"),
+	}
+	mockCreator := &mockCreator{
+		id:  "42",
+		err: nil,
+	}
+	dummyUser := &domain.User{
+		Name:  "Gabriel de Souza Seibel",
+		Email: "gabriel.seibel@tuta.io",
+	}
+	dummyPassword := "test123"
+	s := Service{
+		byEmailReader:  mockByEmailReader,
+		passwordHasher: mockPasswordHasher,
+		creator:        mockCreator,
+	}
+
+	// run code under test
+	id, err := s.Create(dummyUser, dummyPassword, dummyContext)
+
+	// assert good results and side effects
+	if err == nil {
+		t.Errorf("Service.Create() error: nil, want %s", errors.New("email is taken"))
+	}
+	if id != "" {
+		t.Errorf("Service.Create() = %v, want ", id)
+	}
+	if mockCreator.user != nil {
+		t.Errorf("Service.Create() saved user %v, want %v", mockCreator.user, *dummyUser)
+	}
+	if mockPasswordHasher.password != "" {
+		t.Errorf("Service.Create() hashed password %v, want ", mockPasswordHasher.password)
+	}
+	if mockCreator.ctx != nil {
+		t.Errorf("Service.Create() passed context %v, want nil", mockCreator.ctx)
+	}
 }
 
 type mockByEmailReader struct {
+	ctx   context.Context
 	email string
 	user  *domain.UserWithHashedPassword
 	err   error
 }
 
-func (m *mockByEmailReader) ReadSensitiveByEmail(email string) (*domain.UserWithHashedPassword, error) {
+func (m *mockByEmailReader) ReadSensitiveByEmail(email string, ctx context.Context) (*domain.UserWithHashedPassword, error) {
+	m.ctx = ctx
 	m.email = email
 	return m.user, m.err
 }
@@ -174,15 +253,14 @@ func (m *mockPasswordVerifier) CompareHashAndPassword(hashedPassword string, pas
 
 func TestService_Login_OK(t *testing.T) {
 	// prepare and inject dependencies
+	dummyContext := context.TODO()
 	dummyEmail := "gabrielseibel1@gmail.com"
 	dummyPassword := "test123"
 	mockReader := &mockByEmailReader{
 		user: &domain.UserWithHashedPassword{
-			User: domain.User{
-				ID:    "42",
-				Name:  "Gabriel de Souza Seibel",
-				Email: "gabriel.seibel@tuta.io",
-			},
+			ID:             "42",
+			Name:           "Gabriel de Souza Seibel",
+			Email:          "gabriel.seibel@tuta.io",
 			HashedPassword: "hashed",
 		},
 		err: nil,
@@ -196,7 +274,7 @@ func TestService_Login_OK(t *testing.T) {
 	}
 
 	// run code under test
-	id, err := s.Login(dummyEmail, dummyPassword)
+	id, err := s.Login(dummyEmail, dummyPassword, dummyContext)
 
 	// assert good results and side-effects
 	if err != nil {
@@ -214,19 +292,21 @@ func TestService_Login_OK(t *testing.T) {
 	if mockPasswordVerifier.password != dummyPassword {
 		t.Errorf("Service.Login() compared password: %v, want %v", mockPasswordVerifier.password, dummyPassword)
 	}
+	if mockReader.ctx != dummyContext {
+		t.Errorf("Service.Login() passed context %v, want %v", mockReader.ctx, dummyContext)
+	}
 }
 
 func TestService_Login_ErrReader(t *testing.T) {
 	// prepare and inject dependencies
+	dummyContext := context.TODO()
 	dummyEmail := "gabrielseibel1@gmail.com"
 	dummyPassword := "test123"
 	mockReader := &mockByEmailReader{
 		user: &domain.UserWithHashedPassword{
-			User: domain.User{
-				ID:    "42",
-				Name:  "Gabriel de Souza Seibel",
-				Email: "gabriel.seibel@tuta.io",
-			},
+			ID:             "42",
+			Name:           "Gabriel de Souza Seibel",
+			Email:          "gabriel.seibel@tuta.io",
 			HashedPassword: "hashed",
 		},
 		err: errors.New("mock error from reader"),
@@ -240,7 +320,7 @@ func TestService_Login_ErrReader(t *testing.T) {
 	}
 
 	// run code under test
-	id, err := s.Login(dummyEmail, dummyPassword)
+	id, err := s.Login(dummyEmail, dummyPassword, dummyContext)
 
 	// assert good results and side-effects
 	if err == nil {
@@ -258,19 +338,21 @@ func TestService_Login_ErrReader(t *testing.T) {
 	if mockPasswordVerifier.password != "" {
 		t.Errorf("Service.Login() compared password: %v, want ", mockPasswordVerifier.password)
 	}
+	if mockReader.ctx != dummyContext {
+		t.Errorf("Service.Login() passed context %v, want %v", mockReader.ctx, dummyContext)
+	}
 }
 
 func TestService_Login_ErrVerifier(t *testing.T) {
 	// prepare and inject dependencies
+	dummyContext := context.TODO()
 	dummyEmail := "gabrielseibel1@gmail.com"
 	dummyPassword := "test123"
 	mockReader := &mockByEmailReader{
 		user: &domain.UserWithHashedPassword{
-			User: domain.User{
-				ID:    "42",
-				Name:  "Gabriel de Souza Seibel",
-				Email: "gabriel.seibel@tuta.io",
-			},
+			ID:             "42",
+			Name:           "Gabriel de Souza Seibel",
+			Email:          "gabriel.seibel@tuta.io",
 			HashedPassword: "hashed",
 		},
 		err: nil,
@@ -284,7 +366,7 @@ func TestService_Login_ErrVerifier(t *testing.T) {
 	}
 
 	// run code under test
-	id, err := s.Login(dummyEmail, dummyPassword)
+	id, err := s.Login(dummyEmail, dummyPassword, dummyContext)
 
 	// assert good results and side-effects
 	if err == nil {
@@ -302,21 +384,27 @@ func TestService_Login_ErrVerifier(t *testing.T) {
 	if mockPasswordVerifier.password != dummyPassword {
 		t.Errorf("Service.Login() compared password: %v, want %v", mockPasswordVerifier.password, dummyPassword)
 	}
+	if mockReader.ctx != dummyContext {
+		t.Errorf("Service.Login() passed context %v, want %v", mockReader.ctx, dummyContext)
+	}
 }
 
 type mockByIDReader struct {
+	ctx  context.Context
 	id   string
 	user *domain.User
 	err  error
 }
 
-func (m *mockByIDReader) ReadByID(id string) (*domain.User, error) {
+func (m *mockByIDReader) ReadByID(id string, ctx context.Context) (*domain.User, error) {
+	m.ctx = ctx
 	m.id = id
 	return m.user, m.err
 }
 
 func TestService_Read_OK(t *testing.T) {
 	// prepare and inject dependencies
+	dummyContext := context.TODO()
 	dummyID := "87"
 	mockReader := &mockByIDReader{
 		user: &domain.User{
@@ -331,7 +419,7 @@ func TestService_Read_OK(t *testing.T) {
 	}
 
 	// run code under test
-	user, err := s.Read(dummyID)
+	user, err := s.Read(dummyID, dummyContext)
 
 	// assert good results and side-effects
 	if err != nil {
@@ -343,10 +431,14 @@ func TestService_Read_OK(t *testing.T) {
 	if mockReader.id != dummyID {
 		t.Errorf("Service.Read() queried id: %v, want %v", mockReader.id, dummyID)
 	}
+	if mockReader.ctx != dummyContext {
+		t.Errorf("Service.Read() passed context %v, want %v", mockReader.ctx, dummyContext)
+	}
 }
 
 func TestService_Read_Err(t *testing.T) {
 	// prepare and inject dependencies
+	dummyContext := context.TODO()
 	dummyID := "87"
 	mockReader := &mockByIDReader{
 		user: &domain.User{
@@ -361,7 +453,7 @@ func TestService_Read_Err(t *testing.T) {
 	}
 
 	// run code under test
-	user, err := s.Read(dummyID)
+	user, err := s.Read(dummyID, dummyContext)
 
 	// assert good results and side-effects
 	if err == nil {
@@ -373,21 +465,27 @@ func TestService_Read_Err(t *testing.T) {
 	if mockReader.id != dummyID {
 		t.Errorf("Service.Read() queried id: %v, want %v", mockReader.id, dummyID)
 	}
+	if mockReader.ctx != dummyContext {
+		t.Errorf("Service.Read() passed context %v, want %v", mockReader.ctx, dummyContext)
+	}
 }
 
 type mockUpdater struct {
+	ctx         context.Context
 	receiveUser *domain.User
 	returnUser  *domain.User
 	err         error
 }
 
-func (m *mockUpdater) Update(user *domain.User) (*domain.User, error) {
+func (m *mockUpdater) Update(user *domain.User, ctx context.Context) (*domain.User, error) {
+	m.ctx = ctx
 	m.receiveUser = user
 	return m.returnUser, m.err
 }
 
 func TestService_Update_OK(t *testing.T) {
 	// prepare and inject dependencies
+	dummyContext := context.TODO()
 	dummyUser := &domain.User{
 		ID:    "87",
 		Name:  "Gabriel Seibel de Souza",
@@ -406,7 +504,7 @@ func TestService_Update_OK(t *testing.T) {
 	}
 
 	// run code under test
-	user, err := s.Update(dummyUser)
+	user, err := s.Update(dummyUser, dummyContext)
 
 	// assert good results and side-effects
 	if err != nil {
@@ -418,10 +516,14 @@ func TestService_Update_OK(t *testing.T) {
 	if mockUpdater.receiveUser != dummyUser {
 		t.Errorf("Service.Update() updated user: %v, want %v", mockUpdater.receiveUser, dummyUser)
 	}
+	if mockUpdater.ctx != dummyContext {
+		t.Errorf("Service.Update() passed context %v, want %v", mockUpdater.ctx, dummyContext)
+	}
 }
 
 func TestService_Update_Err(t *testing.T) {
 	// prepare and inject dependencies
+	dummyContext := context.TODO()
 	dummyUser := &domain.User{
 		ID:    "87",
 		Name:  "Gabriel Seibel de Souza",
@@ -440,7 +542,7 @@ func TestService_Update_Err(t *testing.T) {
 	}
 
 	// run code under test
-	user, err := s.Update(dummyUser)
+	user, err := s.Update(dummyUser, dummyContext)
 
 	// assert good results and side-effects
 	if err == nil {
@@ -452,20 +554,26 @@ func TestService_Update_Err(t *testing.T) {
 	if mockUpdater.receiveUser != dummyUser {
 		t.Errorf("Service.Update() updated user: %v, want %v", mockUpdater.receiveUser, dummyUser)
 	}
+	if mockUpdater.ctx != dummyContext {
+		t.Errorf("Service.Update() passed context %v, want %v", mockUpdater.ctx, dummyContext)
+	}
 }
 
 type mockDeleter struct {
+	ctx context.Context
 	id  string
 	err error
 }
 
-func (m *mockDeleter) Delete(id string) error {
+func (m *mockDeleter) Delete(id string, ctx context.Context) error {
+	m.ctx = ctx
 	m.id = id
 	return m.err
 }
 
 func TestService_Delete_OK(t *testing.T) {
 	// prepare and inject dependencies
+	dummyContext := context.TODO()
 	dummyID := "87"
 	mockDeleter := &mockDeleter{
 		err: nil,
@@ -475,7 +583,7 @@ func TestService_Delete_OK(t *testing.T) {
 	}
 
 	// run code under test
-	err := s.Delete(dummyID)
+	err := s.Delete(dummyID, dummyContext)
 
 	// assert good results and side-effects
 	if err != nil {
@@ -484,10 +592,14 @@ func TestService_Delete_OK(t *testing.T) {
 	if mockDeleter.id != dummyID {
 		t.Errorf("Service.Delete() updated user: %v, want %v", mockDeleter.id, dummyID)
 	}
+	if mockDeleter.ctx != dummyContext {
+		t.Errorf("Service.Delete() passed context %v, want %v", mockDeleter.ctx, dummyContext)
+	}
 }
 
 func TestService_Delete_Err(t *testing.T) {
 	// prepare and inject dependencies
+	dummyContext := context.TODO()
 	dummyID := "87"
 	mockDeleter := &mockDeleter{
 		err: errors.New("mock error from deleter"),
@@ -497,7 +609,7 @@ func TestService_Delete_Err(t *testing.T) {
 	}
 
 	// run code under test
-	err := s.Delete(dummyID)
+	err := s.Delete(dummyID, dummyContext)
 
 	// assert good results and side-effects
 	if err == nil {
@@ -505,6 +617,9 @@ func TestService_Delete_Err(t *testing.T) {
 	}
 	if mockDeleter.id != dummyID {
 		t.Errorf("Service.Delete() updated user: %v, want %v", mockDeleter.id, dummyID)
+	}
+	if mockDeleter.ctx != dummyContext {
+		t.Errorf("Service.Delete() passed context %v, want %v", mockDeleter.ctx, dummyContext)
 	}
 }
 

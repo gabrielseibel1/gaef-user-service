@@ -1,5 +1,6 @@
 {
     "cSpell.words": [
+        "bson",
         "deleter",
         "Deleter",
         "godotenv",
@@ -7,6 +8,7 @@
         "Hasher",
         "loginer",
         "Loginer",
+        "readpref",
         "signup",
         "Signup"
     ]

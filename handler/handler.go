@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"time"
@@ -13,19 +14,19 @@ import (
 // dependencies
 
 type Creator interface {
-	Create(user *domain.User, password string) (string, error)
+	Create(user *domain.User, password string, ctx context.Context) (string, error)
 }
 type Loginer interface {
-	Login(email, password string) (string, error)
+	Login(email, password string, ctx context.Context) (string, error)
 }
 type Reader interface {
-	Read(id string) (*domain.User, error)
+	Read(id string, ctx context.Context) (*domain.User, error)
 }
 type Updater interface {
-	Update(user *domain.User) (*domain.User, error)
+	Update(user *domain.User, ctx context.Context) (*domain.User, error)
 }
 type Deleter interface {
-	Delete(id string) error
+	Delete(id string, ctx context.Context) error
 }
 
 // implementation
@@ -104,7 +105,7 @@ func (sh Handler) Signup() gin.HandlerFunc {
 			Email: json.Email,
 			Name:  json.Name,
 		}
-		id, err := sh.creator.Create(user, json.Password)
+		id, err := sh.creator.Create(user, json.Password, ctx)
 		if err != nil {
 			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
@@ -124,13 +125,13 @@ func (sh Handler) Login() gin.HandlerFunc {
 			return
 		}
 
-		id, err := sh.loginer.Login(json.Email, json.Password)
+		id, err := sh.loginer.Login(json.Email, json.Password, ctx)
 		if err != nil {
 			ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
 
-		user, err := sh.reader.Read(id)
+		user, err := sh.reader.Read(id, ctx)
 		if err != nil {
 			ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
@@ -162,7 +163,7 @@ func (sh Handler) GetIDFromToken() gin.HandlerFunc {
 func (sh Handler) GetUserFromID() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		id := ctx.Param("id")
-		user, err := sh.reader.Read(id)
+		user, err := sh.reader.Read(id, ctx)
 		if err != nil {
 			ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 			return
@@ -184,7 +185,7 @@ func (sh Handler) UpdateUser() gin.HandlerFunc {
 			return
 		}
 
-		updatedUser, err := sh.updater.Update(&providedUser)
+		updatedUser, err := sh.updater.Update(&providedUser, ctx)
 		if err != nil {
 			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
@@ -198,7 +199,7 @@ func (sh Handler) DeleteUser() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		id := ctx.GetString("AuthenticatedUserID")
 
-		err := sh.deleter.Delete(id)
+		err := sh.deleter.Delete(id, ctx)
 		if err != nil {
 			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return

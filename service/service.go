@@ -1,6 +1,9 @@
 package service
 
 import (
+	"context"
+	"errors"
+
 	"github.com/gabrielseibel1/gaef-user-service/domain"
 )
 
@@ -13,19 +16,19 @@ type PasswordVerifier interface {
 	CompareHashAndPassword(hashedPassword, password string) error
 }
 type Creator interface {
-	Create(user *domain.UserWithHashedPassword) (string, error)
+	Create(user *domain.UserWithHashedPassword, ctx context.Context) (string, error)
 }
 type ByIDReader interface {
-	ReadByID(id string) (*domain.User, error)
+	ReadByID(id string, ctx context.Context) (*domain.User, error)
 }
 type ByEmailReader interface {
-	ReadSensitiveByEmail(email string) (*domain.UserWithHashedPassword, error)
+	ReadSensitiveByEmail(email string, ctx context.Context) (*domain.UserWithHashedPassword, error)
 }
 type Updater interface {
-	Update(user *domain.User) (*domain.User, error)
+	Update(user *domain.User, ctx context.Context) (*domain.User, error)
 }
 type Deleter interface {
-	Delete(id string) error
+	Delete(id string, ctx context.Context) error
 }
 
 // implementation
@@ -52,17 +55,20 @@ func New(passwordHasher PasswordHasher, passwordVerifier PasswordVerifier, creat
 	}
 }
 
-func (s Service) Create(user *domain.User, password string) (string, error) {
+func (s Service) Create(user *domain.User, password string, ctx context.Context) (string, error) {
+	_, err := s.byEmailReader.ReadSensitiveByEmail(user.Email, ctx)
+	if err == nil {
+		return "", errors.New("email is taken")
+	}
 	hash, err := s.passwordHasher.GenerateFromPassword(password)
 	if err != nil {
 		return "", err
 	}
-	u := domain.UserWithHashedPassword{User: *user, HashedPassword: hash}
-	return s.creator.Create(&u)
+	return s.creator.Create(domain.FromSimplifiedUser(user, hash), ctx)
 }
 
-func (ss Service) Login(email, password string) (string, error) {
-	u, err := ss.byEmailReader.ReadSensitiveByEmail(email)
+func (ss Service) Login(email, password string, ctx context.Context) (string, error) {
+	u, err := ss.byEmailReader.ReadSensitiveByEmail(email, ctx)
 	if err != nil {
 		return "", err
 	}
@@ -73,22 +79,22 @@ func (ss Service) Login(email, password string) (string, error) {
 	return u.ID, nil
 }
 
-func (ss Service) Read(id string) (*domain.User, error) {
-	user, err := ss.byIDReader.ReadByID(id)
+func (ss Service) Read(id string, ctx context.Context) (*domain.User, error) {
+	user, err := ss.byIDReader.ReadByID(id, ctx)
 	if err != nil {
 		return nil, err
 	}
 	return user, nil
 }
 
-func (ss Service) Update(user *domain.User) (*domain.User, error) {
-	user, err := ss.updater.Update(user)
+func (ss Service) Update(user *domain.User, ctx context.Context) (*domain.User, error) {
+	user, err := ss.updater.Update(user, ctx)
 	if err != nil {
 		return nil, err
 	}
 	return user, nil
 }
 
-func (ss Service) Delete(id string) error {
-	return ss.deleter.Delete(id)
+func (ss Service) Delete(id string, ctx context.Context) error {
+	return ss.deleter.Delete(id, ctx)
 }
