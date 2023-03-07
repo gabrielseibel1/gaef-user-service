@@ -6,36 +6,53 @@ import (
 	"time"
 
 	"github.com/gabrielseibel1/gaef-user-service/domain"
-	"github.com/gabrielseibel1/gaef-user-service/service"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt"
 )
 
-type Handler interface {
-	JWTAuthMiddleware() func(ctx *gin.Context)
-	Signup() func(ctx *gin.Context)
-	Login() func(ctx *gin.Context)
-	GetIDFromToken() func(ctx *gin.Context)
-	GetUserFromID() func(ctx *gin.Context)
-	UpdateUser() func(ctx *gin.Context)
-	DeleteUser() func(ctx *gin.Context)
+// dependencies
+
+type Creator interface {
+	Create(user *domain.User, password string) (string, error)
+}
+type Loginer interface {
+	Login(email, password string) (string, error)
+}
+type Reader interface {
+	Read(id string) (*domain.User, error)
+}
+type Updater interface {
+	Update(user *domain.User) (*domain.User, error)
+}
+type Deleter interface {
+	Delete(id string) error
 }
 
-type serviceHandler struct {
-	service   service.Service
+// implementation
+
+type Handler struct {
+	creator   Creator
+	loginer   Loginer
+	reader    Reader
+	updater   Updater
+	deleter   Deleter
 	jwtSecret []byte
 }
 
 const jwtTTL = time.Hour * 24 * 7
 
-func New(service service.Service, jwtSecret []byte) Handler {
-	return &serviceHandler{
-		service:   service,
+func New(creator Creator, loginer Loginer, reader Reader, updater Updater, deleter Deleter, jwtSecret []byte) *Handler {
+	return &Handler{
+		creator:   creator,
+		loginer:   loginer,
+		reader:    reader,
+		updater:   updater,
+		deleter:   deleter,
 		jwtSecret: jwtSecret,
 	}
 }
 
-func (sh serviceHandler) JWTAuthMiddleware() func(ctx *gin.Context) {
+func (sh Handler) JWTAuthMiddleware() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		authHeader := ctx.GetHeader("Authorization")
 		if authHeader == "" || len(authHeader) <= len("Bearer ") {
@@ -72,7 +89,7 @@ func (sh serviceHandler) JWTAuthMiddleware() func(ctx *gin.Context) {
 	}
 }
 
-func (sh serviceHandler) Signup() func(ctx *gin.Context) {
+func (sh Handler) Signup() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		var json struct {
 			Name     string `json:"name" binding:"required"`
@@ -87,7 +104,7 @@ func (sh serviceHandler) Signup() func(ctx *gin.Context) {
 			Email: json.Email,
 			Name:  json.Name,
 		}
-		id, err := sh.service.Create(user, json.Password)
+		id, err := sh.creator.Create(user, json.Password)
 		if err != nil {
 			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
@@ -96,7 +113,7 @@ func (sh serviceHandler) Signup() func(ctx *gin.Context) {
 	}
 }
 
-func (sh serviceHandler) Login() func(ctx *gin.Context) {
+func (sh Handler) Login() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		var json struct {
 			Email    string `json:"email" binding:"required"`
@@ -107,13 +124,13 @@ func (sh serviceHandler) Login() func(ctx *gin.Context) {
 			return
 		}
 
-		id, err := sh.service.Login(json.Email, json.Password)
+		id, err := sh.loginer.Login(json.Email, json.Password)
 		if err != nil {
 			ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
 
-		user, err := sh.service.Read(id)
+		user, err := sh.reader.Read(id)
 		if err != nil {
 			ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
@@ -135,17 +152,17 @@ func (sh serviceHandler) Login() func(ctx *gin.Context) {
 	}
 }
 
-func (sh serviceHandler) GetIDFromToken() func(ctx *gin.Context) {
+func (sh Handler) GetIDFromToken() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		id := ctx.GetString("AuthenticatedUserID")
 		ctx.JSON(http.StatusOK, gin.H{"id": id})
 	}
 }
 
-func (sh serviceHandler) GetUserFromID() func(ctx *gin.Context) {
+func (sh Handler) GetUserFromID() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		id := ctx.Param("id")
-		user, err := sh.service.Read(id)
+		user, err := sh.reader.Read(id)
 		if err != nil {
 			ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 			return
@@ -154,7 +171,7 @@ func (sh serviceHandler) GetUserFromID() func(ctx *gin.Context) {
 	}
 }
 
-func (sh serviceHandler) UpdateUser() func(ctx *gin.Context) {
+func (sh Handler) UpdateUser() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		var providedUser domain.User
 		if err := ctx.ShouldBindJSON(&providedUser); err != nil {
@@ -167,7 +184,7 @@ func (sh serviceHandler) UpdateUser() func(ctx *gin.Context) {
 			return
 		}
 
-		updatedUser, err := sh.service.Update(&providedUser)
+		updatedUser, err := sh.updater.Update(&providedUser)
 		if err != nil {
 			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
@@ -177,11 +194,11 @@ func (sh serviceHandler) UpdateUser() func(ctx *gin.Context) {
 	}
 }
 
-func (sh serviceHandler) DeleteUser() func(ctx *gin.Context) {
+func (sh Handler) DeleteUser() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		id := ctx.GetString("AuthenticatedUserID")
 
-		err := sh.service.Delete(id)
+		err := sh.deleter.Delete(id)
 		if err != nil {
 			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return

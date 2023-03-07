@@ -8,23 +8,15 @@ import (
 	"github.com/gabrielseibel1/gaef-user-service/domain"
 )
 
-type Store interface {
-	Create(user *domain.UserWithHashedPassword) (string, error)
-	ReadByID(id string) (*domain.User, error)
-	ReadSensitiveByEmail(email string) (*domain.UserWithHashedPassword, error)
-	Update(user *domain.User) (*domain.User, error)
-	Delete(id string) error
-}
-
-type mapStore map[string]*domain.UserWithHashedPassword
+type MapStore map[string]*domain.UserWithHashedPassword
 
 var id = 0
 
-func New() Store {
-	return &mapStore{}
+func New() *MapStore {
+	return &MapStore{}
 }
 
-func (ms *mapStore) Create(user *domain.UserWithHashedPassword) (string, error) {
+func (ms *MapStore) Create(user *domain.UserWithHashedPassword) (string, error) {
 	for _, v := range *ms {
 		if v.Email == user.Email {
 			return "", errors.New("user exists")
@@ -37,7 +29,7 @@ func (ms *mapStore) Create(user *domain.UserWithHashedPassword) (string, error) 
 	return createdID, nil
 }
 
-func (ms mapStore) ReadByID(id string) (*domain.User, error) {
+func (ms MapStore) ReadByID(id string) (*domain.User, error) {
 	u, ok := ms[id]
 	if !ok {
 		return nil, errors.New("no such user")
@@ -45,7 +37,7 @@ func (ms mapStore) ReadByID(id string) (*domain.User, error) {
 	return &u.User, nil
 }
 
-func (ms mapStore) ReadSensitiveByEmail(email string) (*domain.UserWithHashedPassword, error) {
+func (ms MapStore) ReadSensitiveByEmail(email string) (*domain.UserWithHashedPassword, error) {
 	for _, v := range ms {
 		if v.Email == email {
 			return v, nil
@@ -54,7 +46,7 @@ func (ms mapStore) ReadSensitiveByEmail(email string) (*domain.UserWithHashedPas
 	return nil, fmt.Errorf("no user with email %s", email)
 }
 
-func (ms *mapStore) Update(user *domain.User) (*domain.User, error) {
+func (ms *MapStore) Update(user *domain.User) (*domain.User, error) {
 	u, ok := (*ms)[user.ID]
 	if !ok {
 		return nil, errors.New("no such user")
@@ -71,7 +63,7 @@ func (ms *mapStore) Update(user *domain.User) (*domain.User, error) {
 	return user, nil
 }
 
-func (ms *mapStore) Delete(id string) error {
+func (ms *MapStore) Delete(id string) error {
 	delete(*ms, id)
 	return nil
 }

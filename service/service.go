@@ -2,53 +2,93 @@ package service
 
 import (
 	"github.com/gabrielseibel1/gaef-user-service/domain"
-	"github.com/gabrielseibel1/gaef-user-service/store"
-	"golang.org/x/crypto/bcrypt"
 )
 
-type Service interface {
-	Create(user *domain.User, password string) (string, error)
-	Login(email, password string) (string, error)
-	Read(id string) (*domain.User, error)
+// dependencies
+
+type PasswordHasher interface {
+	GenerateFromPassword(password string) (string, error)
+}
+type PasswordVerifier interface {
+	CompareHashAndPassword(hashedPassword, password string) error
+}
+type Creator interface {
+	Create(user *domain.UserWithHashedPassword) (string, error)
+}
+type ByIDReader interface {
+	ReadByID(id string) (*domain.User, error)
+}
+type ByEmailReader interface {
+	ReadSensitiveByEmail(email string) (*domain.UserWithHashedPassword, error)
+}
+type Updater interface {
 	Update(user *domain.User) (*domain.User, error)
+}
+type Deleter interface {
 	Delete(id string) error
 }
 
-type storeService struct {
-	store store.Store
+// implementation
+
+type Service struct {
+	passwordHasher   PasswordHasher
+	passwordVerifier PasswordVerifier
+	creator          Creator
+	byIDReader       ByIDReader
+	byEmailReader    ByEmailReader
+	updater          Updater
+	deleter          Deleter
 }
 
-func New(store store.Store) Service {
-	return &storeService{
-		store: store,
+func New(passwordHasher PasswordHasher, passwordVerifier PasswordVerifier, creator Creator, byIDReader ByIDReader, byEmailReader ByEmailReader, updater Updater, deleter Deleter) *Service {
+	return &Service{
+		passwordHasher:   passwordHasher,
+		passwordVerifier: passwordVerifier,
+		creator:          creator,
+		byIDReader:       byIDReader,
+		byEmailReader:    byEmailReader,
+		updater:          updater,
+		deleter:          deleter,
 	}
 }
 
-func (ss storeService) Create(user *domain.User, password string) (string, error) {
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		return "", nil
-	}
-	var u = domain.UserWithHashedPassword{User: *user, HashedPassword: string(hash)}
-	return ss.store.Create(&u)
-}
-
-func (ss storeService) Login(email, password string) (string, error) {
-	u, err := ss.store.ReadSensitiveByEmail(email)
+func (s Service) Create(user *domain.User, password string) (string, error) {
+	hash, err := s.passwordHasher.GenerateFromPassword(password)
 	if err != nil {
 		return "", err
 	}
-	return u.ID, bcrypt.CompareHashAndPassword([]byte(u.HashedPassword), []byte(password))
+	u := domain.UserWithHashedPassword{User: *user, HashedPassword: hash}
+	return s.creator.Create(&u)
 }
 
-func (ss storeService) Read(id string) (*domain.User, error) {
-	return ss.store.ReadByID(id)
+func (ss Service) Login(email, password string) (string, error) {
+	u, err := ss.byEmailReader.ReadSensitiveByEmail(email)
+	if err != nil {
+		return "", err
+	}
+	err = ss.passwordVerifier.CompareHashAndPassword(u.HashedPassword, password)
+	if err != nil {
+		return "", err
+	}
+	return u.ID, nil
 }
 
-func (ss storeService) Update(user *domain.User) (*domain.User, error) {
-	return ss.store.Update(user)
+func (ss Service) Read(id string) (*domain.User, error) {
+	user, err := ss.byIDReader.ReadByID(id)
+	if err != nil {
+		return nil, err
+	}
+	return user, nil
 }
 
-func (ss storeService) Delete(email string) error {
-	return ss.store.Delete(email)
+func (ss Service) Update(user *domain.User) (*domain.User, error) {
+	user, err := ss.updater.Update(user)
+	if err != nil {
+		return nil, err
+	}
+	return user, nil
+}
+
+func (ss Service) Delete(id string) error {
+	return ss.deleter.Delete(id)
 }
