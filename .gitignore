@@ -1,4 +1,5 @@
 .env
+gaef-user-service
 
 # Binaries for programs and plugins
 *.exe
