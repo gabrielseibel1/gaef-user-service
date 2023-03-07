@@ -532,26 +532,27 @@ func TestNew(t *testing.T) {
 	// assert good results and side-effects
 	if s == nil {
 		t.Error("service.New() = nil, want non-nil")
+		return // for static check
 	}
-	if s.passwordHasher == nil || s.passwordHasher != mockPasswordHasher {
+	if s.passwordHasher != mockPasswordHasher {
 		t.Error("service.New() did not bind passwordHasher")
 	}
-	if s.passwordVerifier == nil || s.passwordVerifier != mockPasswordVerifier {
+	if s.passwordVerifier != mockPasswordVerifier {
 		t.Error("service.New() did not bind passwordVerifier")
 	}
-	if s.creator == nil || s.creator != mockCreator {
+	if s.creator != mockCreator {
 		t.Error("service.New() did not bind creator")
 	}
-	if s.byIDReader == nil || s.byIDReader != mockByIDReader {
+	if s.byIDReader != mockByIDReader {
 		t.Error("service.New() did not bind byIDReader")
 	}
-	if s.byEmailReader == nil || s.byEmailReader != mockByEmailReader {
+	if s.byEmailReader != mockByEmailReader {
 		t.Error("service.New() did not bind byEmailReader")
 	}
-	if s.updater == nil || s.updater != mockUpdater {
+	if s.updater != mockUpdater {
 		t.Error("service.New() did not bind updater")
 	}
-	if s.deleter == nil || s.deleter != mockDeleter {
+	if s.deleter != mockDeleter {
 		t.Error("service.New() did not bind deleter")
 	}
 }
