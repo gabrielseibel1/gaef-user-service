@@ -126,5 +126,5 @@ func main() {
 			auth.DELETE("/:id", gen.deleteHandler.DeleteUser())
 		}
 	}
-	r.Run(fmt.Sprintf("localhost:%s", port))
+	r.Run(fmt.Sprintf("0.0.0.0:%s", port))
 }
